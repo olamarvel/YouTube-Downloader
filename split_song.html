@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Audio Trimmer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    input[type="file"],
+    input[type="text"],
+    button {
+      margin-bottom: 10px;
+    }
+    .download-button {
+      display: block;
+      margin-top: 10px;
+      text-decoration: none;
+      padding: 5px 10px;
+      background-color: #007bff;
+      color: #fff;
+      border-radius: 5px;
+      font-weight: bold;
+      height: auto;
+    }
+    .download-button:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <h1>Audio Trimmer</h1>
+  <label for="audioFileInput">Select an audio file:</label>
+  <input type="file" id="audioFileInput" accept="audio/*">
+  <label for="timestampInput">Enter timestamp (mm:ss):</label>
+  <input type="text" id="timestampInput" placeholder="00:00">
+  <button id="trimButton" type="submit">Trim</button>
+  <div id="downloadButtons"></div>
+  <audio id="audioPlayer" controls></audio>
+
+  <script>
+    document.getElementById("trimButton").addEventListener("click", function () {
+      // debugger
+      const audioFileInput = document.getElementById("audioFileInput");
+      const timestampInput = document.getElementById("timestampInput");
+      const audioPlayer = document.getElementById("audioPlayer");
+      const downloadButtons = document.getElementById("downloadButtons");
+
+      const file = audioFileInput.files[0];
+      const timestamp = timestampInput.value;
+      const [minutes, seconds] = timestamp.split(":").map(Number);
+
+      if (!file) {
+        alert("Please select an audio file.");
+        return;
+      }
+
+      if (isNaN(minutes) || isNaN(seconds) || minutes < 0 || seconds < 0) {
+        alert("Invalid timestamp format. Please use mm:ss.");
+        return;
+      }
+
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const audioElement = document.createElement("audio");
+      audioElement.controls = true;
+
+      const fileReader = new FileReader();
+
+      fileReader.onload = function (e) {
+        audioContext.decodeAudioData(e.target.result, function (buffer) {
+          const duration = buffer.duration;
+
+          const start = minutes * 60 + seconds;
+          if (start >= duration) {
+            alert("Timestamp is beyond the audio duration.");
+            return;
+          }
+
+          const end = duration;
+          const trimmedBuffer1 = audioContext.createBuffer(
+            buffer.numberOfChannels,
+            Math.floor((start) * buffer.sampleRate),
+            buffer.sampleRate
+          );
+          const trimmedBuffer2 = audioContext.createBuffer(
+            buffer.numberOfChannels,
+            Math.floor((end - start) * buffer.sampleRate),
+            buffer.sampleRate
+          );
+
+          for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const sourceData = buffer.getChannelData(channel);
+            const destData1 = trimmedBuffer1.getChannelData(channel);
+            const destData2 = trimmedBuffer2.getChannelData(channel);
+            for (let i = 0; i < destData1.length; i++) {
+              destData1[i] = sourceData[i];
+            }
+            for (let i = 0; i < destData2.length; i++) {
+              destData2[i] = sourceData[Math.floor((i + start * buffer.sampleRate))];
+            }
+          }
+
+          // Create blob URLs for the trimmed audio parts
+          const blob1 = new Blob([trimmedBuffer1], { type: "audio/wav" });
+          const blob2 = new Blob([trimmedBuffer2], { type: "audio/wav" });
+
+          audioElement.src = URL.createObjectURL(blob2);
+
+          // Create download buttons for each part
+          const downloadButton1 = createDownloadButton(blob1, "Part 1", file.name);
+          const downloadButton2 = createDownloadButton(blob2, "Part 2", file.name);
+
+          downloadButtons.innerHTML = ''; // Clear previous buttons
+          downloadButtons.appendChild(downloadButton1);
+          downloadButtons.appendChild(downloadButton2);
+          document.body.appendChild(audioElement)
+        });
+      };
+
+      fileReader.readAsArrayBuffer(file);
+    });
+
+    function createDownloadButton(blob, partName, fileName) {
+      const button = document.createElement("a");
+      button.href = URL.createObjectURL(blob);
+      button.download = `${fileName.replace(/\.[^/.]+$/, "")}_Part${partName}.mp3`;
+      button.textContent = `Download ${partName}`;
+      button.classList.add("download-button");
+      return button;
+    }
+  </script>
+</body>
+</html>
